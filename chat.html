@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meduza Chat</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="chat-extra.css">
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="nav-logo-link"><img src="Untitled.png" alt="Logo" class="nav-logo"></a>
+  <a href="index.html">Home</a>
+  <a href="about.html">About</a>
+  <a href="rules.html" >Rules</a>
+  <a href="chat.html" class="active">Chat</a>
+  <a href="contact.html">Contact</a>
+</nav>
+
+<div class="page">
+  <div class="chat-wrapper">
+
+    <div class="chat-header">
+      <h2>Camera Întunericului</h2>
+      <p>Scrie. Eliberează. Dispare.</p>
+      <div class="identity-bar">
+        <span class="identity-label">Ești:</span>
+        <span class="identity-name" id="pseudonym">...</span>
+        <button class="identity-refresh" onclick="refreshPseudonym()" title="Pseudonim nou">↻</button>
+      </div>
+      <div class="online-bar">
+        <span class="online-dot"></span>
+        <span id="online-count">1</span> în umbră acum
+      </div>
+    </div>
+
+    <div id="messages"></div>
+
+    <div id="typing-indicator" class="typing-indicator" style="display:none;">
+      <span></span><span></span><span></span> Cineva scrie...
+    </div>
+
+    <!-- Preview reply — apare deasupra inputului când dai Reply -->
+    <div id="reply-preview" style="display:none;">
+      <div class="reply-preview-inner">
+        <div class="reply-preview-text">
+          <span class="reply-preview-author" id="reply-author"></span>
+          <span id="reply-text"></span>
+        </div>
+        <button class="reply-cancel" onclick="cancelReply()">✕</button>
+      </div>
+    </div>
+
+    <div class="chat-input-row">
+      <input id="msg" type="text" placeholder="Șoptește ceva...">
+      <button id="sendBtn" onclick="send()">Trimite</button>
+    </div>
+
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp }   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, collection, addDoc,
+           onSnapshot, query, orderBy, limit,
+           serverTimestamp }  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getDatabase, ref,
+           set, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+  // ── Cheile Firebase ──
+  const firebaseConfig = {
+    apiKey:            "AIzaSyCtse5s-e1tNMe59NhqBgQeDykLXWNZ8D0",
+    authDomain:        "meduza-chat-79b2a.firebaseapp.com",
+    databaseURL:       "https://meduza-chat-79b2a-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId:         "meduza-chat-79b2a",
+    storageBucket:     "meduza-chat-79b2a.firebasestorage.app",
+    messagingSenderId: "498109467882",
+    appId:             "1:498109467882:web:8f5c80348f861adca11b93",
+    measurementId:     "G-JYK4WSBHVK"
+  };
+
+  const app  = initializeApp(firebaseConfig);
+  const db   = getFirestore(app);
+  const rtdb = getDatabase(app);
+
+  // ── Pseudonime ──
+  const adj  = ["Shadow","Silent","Hollow","Velvet","Crimson","Misty","Broken","Ashen","Lonely","Lunar","Pale","Dark","Lost","Whisper","Fading","Echoing"];
+  const noun = ["Wolf","Rose","Ghost","Raven","Storm","Moon","Tear","Flame","Soul","Mist","Void","Echo","Ash","Dream","Crow","Thorn"];
+
+  function genName() {
+    return adj[Math.floor(Math.random()*adj.length)]
+         + noun[Math.floor(Math.random()*noun.length)]
+         + (Math.floor(Math.random()*90)+10);
+  }
+
+  function getMe() {
+    let s = sessionStorage.getItem("mz_name");
+    if (!s) { s = genName(); sessionStorage.setItem("mz_name", s); }
+    return s;
+  }
+
+  window.refreshPseudonym = () => {
+    const n = genName();
+    sessionStorage.setItem("mz_name", n);
+    document.getElementById("pseudonym").textContent = n;
+  };
+
+  document.getElementById("pseudonym").textContent = getMe();
+
+  // ── Prezenta online ──
+  const presRef = ref(rtdb, "presence/" + getMe());
+  set(presRef, { online: true });
+  onDisconnect(presRef).remove();
+
+  onValue(ref(rtdb, "presence"), snap => {
+    const count = snap.exists() ? Object.keys(snap.val()).length : 1;
+    document.getElementById("online-count").textContent = count;
+  });
+
+
+  // ── REPLY — stocheaza mesajul la care raspunzi ──
+  // Cand dai click pe "Reply", salvam autorul si textul aici
+  let replyTo = null; // { author, text }
+
+  window.setReply = (author, text) => {
+    replyTo = { author, text };
+
+    // Arata preview-ul deasupra inputului
+    document.getElementById("reply-author").textContent = author + ": ";
+    document.getElementById("reply-text").textContent = text.length > 60 ? text.slice(0,60) + "…" : text;
+    document.getElementById("reply-preview").style.display = "block";
+
+    // Focus pe input ca sa scrii imediat
+    document.getElementById("msg").focus();
+  };
+
+  window.cancelReply = () => {
+    replyTo = null;
+    document.getElementById("reply-preview").style.display = "none";
+  };
+
+
+  // ── Trimite mesaj (cu sau fara reply) ──
+  window.send = async () => {
+    const input = document.getElementById("msg");
+    const text  = input.value.trim();
+    if (!text) return;
+    input.value = "";
+
+    // Obiectul mesajului — adaugam replyTo daca exista
+    const msgData = {
+      text,
+      author:    getMe(),
+      timestamp: serverTimestamp()
+    };
+
+    if (replyTo) {
+      msgData.replyTo = replyTo; // salvam in Firestore
+      window.cancelReply();      // ascundem preview-ul
+    }
+
+    await addDoc(collection(db, "messages"), msgData);
+  };
+
+// ── Șterge mesajele mai vechi de X ore ──
+// Schimbă 24 cu câte ore vrei tu
+const ORE = 24;
+
+async function stergeVechi() {
+  const { getDocs, deleteDoc, Timestamp } = await import(
+    "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js"
+  );
+  const limita = Timestamp.fromMillis(Date.now() - ORE * 60 * 60 * 1000);
+  const toate  = await getDocs(
+    query(collection(db, "messages"), orderBy("timestamp", "asc"))
+  );
+  toate.forEach(doc => {
+    if (doc.data().timestamp && doc.data().timestamp < limita) {
+      deleteDoc(doc.ref);
+    }
+  });
+}
+
+// Rulează când se deschide pagina + la fiecare oră
+stergeVechi();
+setInterval(stergeVechi, 60 * 60 * 1000);
+  // ── Asculta mesaje noi ──
+  const q    = query(collection(db, "messages"), orderBy("timestamp","asc"), limit(100));
+  const seen = new Set();
+
+  onSnapshot(q, snap => {
+    snap.docChanges().forEach(ch => {
+      if (ch.type === "added" && !seen.has(ch.doc.id)) {
+        seen.add(ch.doc.id);
+        const d = ch.doc.data();
+        showMsg(d.text, d.author, d.author === getMe(), d.replyTo || null);
+      }
+    });
+  });
+
+
+  // ── Afiseaza mesaj ──
+  function showMsg(text, author, mine, replyTo) {
+    const msgs = document.getElementById("messages");
+    const time = new Date().toLocaleTimeString("ro-RO", { hour:"2-digit", minute:"2-digit" });
+    const div  = document.createElement("div");
+    div.className = "message " + (mine ? "message-user" : "message-other");
+
+    // Daca mesajul e un reply, afisam citatul deasupra
+    const replyHTML = replyTo ? `
+      <div class="reply-quote">
+        <span class="reply-quote-author">${esc(replyTo.author)}</span>
+        <span class="reply-quote-text">${esc(replyTo.text.length > 60 ? replyTo.text.slice(0,60)+"…" : replyTo.text)}</span>
+      </div>` : "";
+
+    div.innerHTML = `
+      <div class="msg-meta">${esc(author)} &nbsp;·&nbsp; ${time}</div>
+      ${replyHTML}
+      <div class="msg-text">${esc(text)}</div>
+      <div class="msg-actions">
+        <button class="reply-btn" onclick="setReply('${esc(author)}', '${esc(text).replace(/'/g,"\\'")}')">↩ Reply</button>
+      </div>
+      <div class="msg-reactions">
+        <button class="reaction-btn" onclick="react(this)">❤️ <span>0</span></button>
+        <button class="reaction-btn" onclick="react(this)">🕯️ <span>0</span></button>
+        <button class="reaction-btn" onclick="react(this)">🌙 <span>0</span></button>
+      </div>`;
+
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+
+  // ── Reactii emoji ──
+  window.react = btn => {
+    const s = btn.querySelector("span");
+    const n = parseInt(s.textContent) || 0;
+    btn.classList.toggle("active");
+    s.textContent = btn.classList.contains("active") ? n + 1 : n - 1;
+  };
+
+  // ── Helper ──
+  function esc(s) {
+    return String(s)
+      .replace(/&/g,"&amp;")
+      .replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;");
+  }
+
+  // ── Enter = trimite ──
+  document.getElementById("msg").addEventListener("keydown", e => {
+    if (e.key === "Enter") window.send();
+  });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meduza Chat — Contact</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="nav-logo-link"><img src="Untitled.png" alt="Meduza Logo" class="nav-logo"></a>
+  <a href="index.html">Home</a>
+  <a href="about.html">About</a>
+  <a href="rules.html" >Rules</a>
+  <a href="chat.html">Chat</a>
+  <a href="contact.html" class="active">Contact</a>
+</nav>
+
+<div class="page">
+  <div class="container" style="max-width:620px">
+
+    <div class="section-header animate-in">
+      <span class="section-label">Legătură</span>
+      <h2>Contact</h2>
+      <div class="divider"><span>✦</span></div>
+    </div>
+
+    <div class="card animate-in" style="animation-delay:0.15s">
+      <div class="card-ornament">✦ &nbsp;&nbsp; ✦ &nbsp;&nbsp; ✦</div>
+
+      <div class="contact-info">
+        <span class="ci-label">Email</span>
+        <a href="mailto:meduza@chat.com">meduza@chat.com</a>
+      </div>
+      <div class="contact-info">
+        <span class="ci-label">Discord</span>
+        <a href="#">meduza.chat</a>
+      </div>
+      <div class="contact-info" style="border:none">
+        <span class="ci-label">Răspuns</span>
+        <span style="color:var(--text-faint); font-style:italic">În 24–48 de ore</span>
+      </div>
+
+      <div style="margin-top:40px">
+        <div class="form-group">
+          <label class="form-label">Mesajul tău</label>
+          <textarea class="form-textarea" placeholder="Scrie-ne ce simți..."></textarea>
+        </div>
+
+        <div style="text-align:center; margin-top:8px">
+          <button class="btn btn-primary" onclick="submitContact()">Trimite Mesajul</button>
+        </div>
+
+        <p id="contact-confirm" style="text-align:center; margin-top:18px; font-style:italic; color:var(--accent); display:none;">
+          Mesajul tău a plecat în noapte. ✦
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>
+    <span>✦</span> &nbsp; Meduza Chat &nbsp; <span>✦</span>
+  </footer>
+</div>
+
+<script>
+function submitContact() {
+  const ta = document.querySelector('.form-textarea');
+  if (ta.value.trim()) {
+    document.getElementById('contact-confirm').style.display = 'block';
+    ta.value = '';
+  }
+}
+</script>
+
+</body>
+</html>
